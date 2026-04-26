@@ -1,6 +1,6 @@
 module OAuth::DeviceFlow
   class NetrcStore < Store
-    def initialize(@machine : String, @path : String = File.expand_path("~/.netrc"))
+    def initialize(@machine : String, @path : String = File.expand_path("~/.netrc", home: true))
     end
 
     def load : Token?
