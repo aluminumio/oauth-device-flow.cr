@@ -54,6 +54,31 @@ module OAuth::DeviceFlow
       end
     end
 
+    def refresh! : Token
+      tok = @store.load
+      raise Error::NotAuthenticated.new("no stored token to refresh") unless tok
+      rt = tok.refresh_token
+      raise Error::InvalidGrant.new("stored token has no refresh_token") unless rt
+      response = post_form(@token_path, {
+        "grant_type"    => "refresh_token",
+        "refresh_token" => rt,
+        "client_id"     => @client_id,
+      })
+      raise_on_refresh_error(response) unless response.status_code == 200
+      new_token = build_token(response, fallback_refresh: rt)
+      @store.save(new_token)
+      new_token
+    end
+
+    private def raise_on_refresh_error(response : HTTP::Client::Response) : Nil
+      err = parse_error(response)
+      case err
+      when "invalid_grant"  then raise Error::InvalidGrant.new("refresh token rejected")
+      when "invalid_client" then raise Error::InvalidClient.new("invalid client_id")
+      else                       raise Error::Base.new("HTTP #{response.status_code}: #{err}")
+      end
+    end
+
     private def build_token(response : HTTP::Client::Response, fallback_refresh : String? = nil) : Token
       data = JSON.parse(response.body)
       Token.new(
