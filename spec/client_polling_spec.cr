@@ -94,3 +94,77 @@ describe "OAuth::DeviceFlow::Client#poll_for_token (backoff)" do
     end
   end
 end
+
+describe "OAuth::DeviceFlow::Client#poll_for_token (terminal errors)" do
+  it "raises AccessDenied on access_denied error" do
+    OAuth::DeviceFlow::Spec::FakeServer.with do |server|
+      server.on("/oauth/token") do |ctx|
+        ctx.response.status_code = 400
+        ctx.response.content_type = "application/json"
+        ctx.response.print %({"error":"access_denied"})
+      end
+
+      client = OAuth::DeviceFlow::Client.new(
+        base_url: server.base_url,
+        client_id: "cli",
+        store: OAuth::DeviceFlow::MemoryStore.new,
+      )
+      device = OAuth::DeviceFlow::DeviceCode.new(
+        device_code: "DC", user_code: "X",
+        verification_uri: "http://example",
+        expires_in: 600, interval: 0,
+      )
+      expect_raises(OAuth::DeviceFlow::Error::AccessDenied) do
+        client.poll_for_token(device)
+      end
+    end
+  end
+
+  it "raises ExpiredToken on expired_token error from server" do
+    OAuth::DeviceFlow::Spec::FakeServer.with do |server|
+      server.on("/oauth/token") do |ctx|
+        ctx.response.status_code = 400
+        ctx.response.content_type = "application/json"
+        ctx.response.print %({"error":"expired_token"})
+      end
+
+      client = OAuth::DeviceFlow::Client.new(
+        base_url: server.base_url,
+        client_id: "cli",
+        store: OAuth::DeviceFlow::MemoryStore.new,
+      )
+      device = OAuth::DeviceFlow::DeviceCode.new(
+        device_code: "DC", user_code: "X",
+        verification_uri: "http://example",
+        expires_in: 600, interval: 0,
+      )
+      expect_raises(OAuth::DeviceFlow::Error::ExpiredToken) do
+        client.poll_for_token(device)
+      end
+    end
+  end
+
+  it "raises ExpiredToken when overall deadline elapses (negative expires_in)" do
+    OAuth::DeviceFlow::Spec::FakeServer.with do |server|
+      server.on("/oauth/token") do |ctx|
+        ctx.response.status_code = 400
+        ctx.response.content_type = "application/json"
+        ctx.response.print %({"error":"authorization_pending"})
+      end
+
+      client = OAuth::DeviceFlow::Client.new(
+        base_url: server.base_url,
+        client_id: "cli",
+        store: OAuth::DeviceFlow::MemoryStore.new,
+      )
+      device = OAuth::DeviceFlow::DeviceCode.new(
+        device_code: "DC", user_code: "X",
+        verification_uri: "http://example",
+        expires_in: -1, interval: 0,
+      )
+      expect_raises(OAuth::DeviceFlow::Error::ExpiredToken) do
+        client.poll_for_token(device)
+      end
+    end
+  end
+end
