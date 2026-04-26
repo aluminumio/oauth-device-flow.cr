@@ -3,7 +3,7 @@ version: 0.1.0
 crystal: ">= 1.10.0"
 
 authors:
-  - Aluminum.io <hello@aluminum.io>
+  - usiegj00 <248302+usiegj00@users.noreply.github.com>
 
 description: |
   OAuth 2.0 Device Authorization Grant (RFC 8628) client for Crystal CLIs.
