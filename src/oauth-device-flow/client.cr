@@ -85,6 +85,34 @@ module OAuth::DeviceFlow
       @store.clear
     end
 
+    def authenticate(scope : String) : Token
+      device = request_device_code(scope)
+      announce_user_action(device)
+      token = poll_for_token(device)
+      @store.save(token)
+      token
+    end
+
+    private def announce_user_action(device : DeviceCode) : Nil
+      url = device.verification_uri_complete || device.verification_uri
+      @output.puts "Authorize this device. Code: #{device.user_code}"
+      @output.puts "URL: #{url}"
+      open_in_browser(url) if @open_browser
+    end
+
+    private def open_in_browser(url : String) : Nil
+      cmd = {% if flag?(:darwin) %}
+              "open"
+            {% elsif flag?(:windows) %}
+              "start"
+            {% else %}
+              "xdg-open"
+            {% end %}
+      Process.run(cmd, [url], output: Process::Redirect::Close, error: Process::Redirect::Close)
+    rescue
+      # silent — caller already printed the URL
+    end
+
     private def raise_on_refresh_error(response : HTTP::Client::Response) : Nil
       err = parse_error(response)
       case err
