@@ -29,6 +29,41 @@ module OAuth::DeviceFlow
       )
     end
 
+    def poll_for_token(device : DeviceCode) : Token
+      interval = device.interval
+      deadline = Time.utc + device.expires_in.seconds
+      loop do
+        sleep interval.seconds if interval > 0
+        raise Error::ExpiredToken.new("device code expired") if Time.utc >= deadline
+        response = post_form(@token_path, {
+          "client_id"   => @client_id,
+          "device_code" => device.device_code,
+          "grant_type"  => "urn:ietf:params:oauth:grant-type:device_code",
+        })
+        if response.status_code == 200
+          return build_token(response)
+        end
+        case parse_error(response)
+        when "authorization_pending" then next
+        when "slow_down"             then interval += 5
+        when "access_denied"         then raise Error::AccessDenied.new("user denied")
+        when "expired_token"         then raise Error::ExpiredToken.new("device code expired")
+        when "invalid_client"        then raise Error::InvalidClient.new("invalid client_id")
+        else                              raise Error::Base.new("unexpected: #{parse_error(response)}")
+        end
+      end
+    end
+
+    private def build_token(response : HTTP::Client::Response, fallback_refresh : String? = nil) : Token
+      data = JSON.parse(response.body)
+      Token.new(
+        access_token: data["access_token"].as_s,
+        expires_at: Time.utc + data["expires_in"].as_i.seconds,
+        refresh_token: data["refresh_token"]?.try(&.as_s) || fallback_refresh,
+        scope: data["scope"]?.try(&.as_s),
+      )
+    end
+
     private def post_form(path : String, params : Hash(String, String)) : HTTP::Client::Response
       body = URI::Params.encode(params)
       headers = HTTP::Headers{
