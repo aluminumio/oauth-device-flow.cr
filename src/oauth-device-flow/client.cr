@@ -70,6 +70,21 @@ module OAuth::DeviceFlow
       new_token
     end
 
+    def access_token : String
+      tok = @store.load
+      raise Error::NotAuthenticated.new("no stored token; call authenticate first") unless tok
+      tok = refresh! if tok.expired?
+      tok.access_token
+    end
+
+    def authenticated? : Bool
+      !@store.load.nil?
+    end
+
+    def logout : Nil
+      @store.clear
+    end
+
     private def raise_on_refresh_error(response : HTTP::Client::Response) : Nil
       err = parse_error(response)
       case err
